@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset=utf-8>
+        <title>My first three.js app</title>
+        <style>
+            body { margin: 0; }
+            canvas { width: 100%; height: 100% }
+            td {text-align: right}
+            .td1{text-align: left}
+            
+        </style>
+
+        <!-- 추가한 부분 -->
+
+        <script src="js/three.min.js"></script>
+
+        <!-- <script src="/scripts/conc/three.js"></script> -->
+        <script src="js/Detector.js"></script>
+    
+        <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+        <style>
+            body {
+                font-family: Monospace;
+                background-color: #f0f0f0;
+                margin: 0px;
+                overflow: hidden;
+            }
+        </style>
+    </head>
+
+    <body>
+        
+        <div style='display:block;position:absolute; padding: 10px'>
+            <button onclick='addShapes();return false;'>Shapes</button>
+            <button onclick='isRotating=true;return false;'>Rotate</button>
+            <button onclick='undoDrawing()'>Undo</button>
+            <button onclick='redoDrawing()'>Redo</button>
+            <br />
+            <br />
+            <form>
+                <table cellpadding="5">
+                    <tr>
+                        <td>
+                            <label>x :</label>
+                            <input id='xLocation' type='number'/>
+                        </td>
+                        <td>
+                            <label>y :</label>
+                            <input id='yLocation' type='number'/>
+                        </td>
+                        <td class='td1'>
+                            <label>z : 0.5</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        
+                        <td text-align="center">
+                            <label>text : </label>
+                        </td>
+                        <td>
+                             <textarea margin="10"></textarea>  
+                        </td>
+                        <td><button>텍스트 입력</button></td>
+                    </tr>
+                </table> 
+            </form> 
+        </div>
+
+        <script>
+
+            var lastPoint = null;
+            var container;
+            var camera, scene, projector, renderer;
+            var particleMaterial;
+            var objects = [];
+            var isRotating=false;
+
+
+            var undoStack = [];
+            var redoStack = [];
+            var lineObjects = [];
+
+
+            function undoDrawing()
+            {
+                //Three.Line 의 주소값 반환
+                //var line = undoStack.pop()
+            
+                // lineObjects들이 저장된 배열을 저장하는 스텍에서 lineObjects배열의 line 집합을 scene에서 remove하는 함수
+                var undo = function (lines) 
+                {
+                    for (var i=0;i<lines.length;i++)
+                    {
+                        var line=lines[i]
+                        scene.remove(line)
+                    }
+                }
+
+
+                var lines = undoStack.pop()
+
+                // 지운 lineObjects를 redoStack에 push합니다.
+                redoStack.push(lines)
+                
+                undo(lines)
+
+
+            }
+
+            function redoDrawing()
+            {
+                var redo = function (lines)
+                {
+                    for (var i=0;i<lines.length;i++)
+                    {
+                        var line=lines[i]
+                        scene.add(line)
+                    }
+                }
+
+                var lines = redoStack.pop()
+
+                undoStack.push(lines)
+
+                redo(lines)
+
+            }
+
+
+            // g
+            function get3dPointZAxis(event)
+            {
+
+                // Three.js 에서 마우스 좌표를 얻어서 백터값으로 저장합니다.
+
+                // 마우스의 x좌표 => ( event.clientX / window.innerWidth ) * 2 - 1
+                // 마우스의 y좌표 => - ( event.clientY / window.innerHeight ) * 2 + 1
+
+                var clientX= event.touches[0].clientX
+                var clientY= event.touches[0].clientY
+
+
+                var vector = new THREE.Vector3(
+                    ( clientX / window.innerWidth ) * 2 - 1,
+                    - ( clientY / window.innerHeight ) * 2 + 1,
+                    0.5 );
+
+                //console.log("client : ["+event.clientX+" ,"+event.clientY+"]")
+                //console.log("window : ["+window.innerWidth+" ,"+window.innerHeight+"]")
+                //console.log("vector : "+"["+vector.x+", "+vector.y+", "+vector.z+"]")
+
+                // 해당 설정한 카메라로 백터값을 비췄을때 벡터의 변화가 나타납니다.
+                projector.unprojectVector( vector, camera );
+               
+
+
+                // vector.sub 란 
+                // 현재 백터에서 camera.position만큼의 vector값을 뺀 뒤 정규화 합니다.
+                var dir = vector.sub( camera.position ).normalize();
+
+
+                
+                var distance = - camera.position.z / dir.z;
+                
+                // 벡터에 거리값을 곱합니다.
+                var pos = camera.position.clone().add( dir.multiplyScalar( distance ) );    
+                
+                // 카메라에 의해 변환된 벡터를 반환합니다.
+                return pos;
+            }
+            
+            function startDraw(event)
+            {
+                lastPoint = get3dPointZAxis(event);
+
+                // lineObjects 배열을 초기화 합니다. 
+                lineObjects = [];
+
+                 console.log("startDraw() 호출")
+           
+
+            }
+
+            function stopDraw(event)
+            {
+                lastPoint = null;
+                console.log("lineObjects의 크기"+lineObjects.length)
+                
+                // undo 버튼을 눌렀을때 lineObjects 값이 push되는 현상이 발생하므로
+                // 이를 막기위해 lineObjects의 크기가 0일떄는 push하지 않는다.
+
+                if(lineObjects.length===0)
+                {
+
+                }
+                else{
+                    undoStack.push(lineObjects.slice());
+                }
+                
+                console.log("stopDraw() 호출")
+
+
+
+            }
+
+            function doDraw(event)
+            {    
+
+                console.log("doDraw() 호출")
+
+                if( lastPoint )
+                {
+                    var pos = get3dPointZAxis(event);
+                    var material = new THREE.LineBasicMaterial({
+                        color: 0x0000ff
+                    });
+                    var geometry = new THREE.Geometry();
+                    if( Math.abs(lastPoint.x - pos.x) < 500 && Math.abs(lastPoint.y - pos.y) < 500 && Math.abs(lastPoint.z - pos.z) < 500 )
+                    {
+                        geometry.vertices.push(lastPoint);
+                        geometry.vertices.push(pos);
+
+                        //console.log("doDraw() 호출")
+                                        
+                        var line = new THREE.Line(geometry, material);
+
+                        // Three.Line의 값을 object 단위로 저장하고 있는 lineObjects를 선언합니다.
+                        lineObjects.push(line)
+                        //console.log(line.isLine)
+                        
+                        scene.add(line);
+                        lastPoint = pos;        
+
+                        console.log("x 좌표: " + event.touches[0].clientX)
+                        console.log("y 좌표: " + event.touches[0].clientY)
+
+                        document.getElementById("xLocation").value=event.touches[0].clientX
+                        document.getElementById("yLocation").value=event.touches[0].clientY
+                        
+                    }
+                    else
+                    {
+                        console.debug(lastPoint.x.toString() + ':' + lastPoint.y.toString() + ':' + lastPoint.z.toString()  + ':' + 
+                                    pos.x.toString() + ':' + pos.y.toString()  + ':' + pos.z.toString());
+                    }
+                }
+              
+
+            }
+            
+            function addShapes()
+            {
+                var geometry = new THREE.CubeGeometry( 100, 100, 100, 1, 1, 1 );
+                var increment = 300;
+                for ( var i = 1; i <= 2; i ++ ) {
+                                    
+                    var object = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial( { color: 'green', opacity: 1 } ) );
+                    
+                    object.position.x = -500 + increment;
+                    object.position.y = 400;
+                    object.position.z = -500 + increment;
+
+                    object.scale.x = i;
+                    object.scale.y = i;
+                    object.scale.z = i;
+
+                    object.rotation.x = i / 3 * Math.PI;
+                    object.rotation.y = i / 3 * Math.PI;
+                    object.rotation.z = i / 3 * Math.PI;                       
+                    
+                    scene.add( object );
+
+                    objects.push( object );
+                    increment +=increment;
+                }
+            }
+
+            init();
+            animate();
+
+            function init() {
+
+                container = document.createElement( 'div' );
+                document.body.appendChild( container );
+                
+                
+                // 투영 카메라를 설정합니다. 
+                // 생성자 매개변수는 
+                // fov : 시야각 , aspect : 카메라 가로세로 비율, near : 평면?? , far : 평면 ?? 입니다.
+
+                camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 1, 10000 );
+                camera.position.set( 0, 300, 500 );
+
+                scene = new THREE.Scene();
+
+                projector = new THREE.Projector();
+
+                if ( Detector.webgl )
+                    renderer = new THREE.WebGLRenderer( {antialias:true} );
+                else
+                    renderer = new THREE.CanvasRenderer();
+                    
+                renderer.setClearColor( 0xf0f0f0 );
+                renderer.setSize( window.innerWidth, window.innerHeight );
+
+                container.appendChild( renderer.domElement );
+
+                
+
+
+                document.addEventListener( 'mousedown', startDraw, false );
+                
+                document.addEventListener( 'mouseup', stopDraw, false );
+                
+                document.addEventListener( 'mousemove', doDraw, false );
+
+
+                ////////////////////// 터치 이벤트 구현 ///////////
+
+
+                document.addEventListener('touchstart', startDraw, false);
+                document.addEventListener('touchmove', doDraw, false);
+                document.addEventListener('touchend', stopDraw, false);
+
+
+                //document.addEventListener('touchenter', touchenterListener, false);
+                //document.addEventListener('touchleave', touchleaveListener, false);
+                //document.addEventListener('touchcancel', touchcancelListener, false);
+
+
+
+                ///////////////////////
+
+
+                
+
+
+
+                window.addEventListener( 'resize', onWindowResize, false );
+
+            }
+
+            function onWindowResize() {
+
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+
+                renderer.setSize( window.innerWidth, window.innerHeight );
+
+            }
+            /*
+            function onDocumentMouseDown( event ) {
+
+                event.preventDefault();
+
+                var vector = new THREE.Vector3( ( event.clientX / window.innerWidth ) * 2 - 1, - ( event.clientY / window.innerHeight ) * 2 + 1, 0.5 );
+                projector.unprojectVector( vector, camera );
+
+                var raycaster = new THREE.Raycaster( camera.position, vector.sub( camera.position ).normalize() );
+
+                var intersects = raycaster.intersectObjects( objects );
+
+                if ( intersects.length > 0 ) {
+
+                    intersects[ 0 ].object.material.color.setHex( Math.random() * 0xffffff );
+
+                    var particle = new THREE.Sprite( particleMaterial );
+                    particle.position = intersects[ 0 ].point;
+                    particle.scale.x = particle.scale.y = 16;
+                    scene.add( particle );
+
+                }
+
+            }
+            */
+            //
+
+            function animate() {
+
+                requestAnimationFrame( animate );
+
+                render();
+                
+
+            }
+
+            var radius = 1000;
+            var theta = 90;
+
+            function render() {
+                if(isRotating)
+                {
+                    theta += 0.1;
+
+                    // degree를 radian으로 변환하고 sin값을 취한다음 반지름을 곱하니까 각이 나오네.. ㅋㅋ 
+                    camera.position.x = radius * Math.sin( THREE.Math.degToRad( theta ) );
+                    camera.position.y = radius * Math.sin( THREE.Math.degToRad( theta ) );
+                    camera.position.z = radius * Math.cos( THREE.Math.degToRad( theta ) );
+                    camera.lookAt( scene.position );
+                }
+                renderer.render( scene, camera );
+
+            }
+
+        </script>
+
+
+    </body>
+    
+</html>
